@@ -191,6 +191,15 @@ function rotateThreeGlobeTo(lat, lon) {
   anim();
 }
 
+// Helper functions for safe touch/mouse coordinate checks
+function isValidPosition(pos) {
+  return pos && typeof pos.x === 'number' && typeof pos.y === 'number' && !isNaN(pos.x) && !isNaN(pos.y);
+}
+
+function isValidMovement(movement) {
+  return movement && isValidPosition(movement.startPosition) && isValidPosition(movement.endPosition);
+}
+
 // ---------- 2. CESIUM GLOBE INITIALIZATION ----------
 async function initCesiumViewer() {
   if (typeof Cesium === 'undefined') {
@@ -238,6 +247,7 @@ async function initCesiumViewer() {
       fullscreenButton: false,
       infoBox: false,
       selectionIndicator: false,
+      useBrowserRecommendedResolution: false,
       contextOptions: {
         webgl: {
           alpha: false,
@@ -248,6 +258,15 @@ async function initCesiumViewer() {
         }
       }
     });
+
+    // Mobile resolution & FPS adjustments to prevent high-DPI projection errors and GPU memory overload
+    viewer.useBrowserRecommendedResolution = false;
+    if (window.devicePixelRatio && window.devicePixelRatio > 1) {
+      viewer.resolutionScale = 1.0;
+    } else {
+      viewer.resolutionScale = 1.0;
+    }
+    viewer.targetFrameRate = 30;
 
     // Add crisp Google Maps style boundaries and place labels overlay
     try {
@@ -275,6 +294,54 @@ async function initCesiumViewer() {
         viewer.scene.fog.density = 0.0001;
       }
     }
+
+    // Safe Touch & Mouse Event Handling with null-checks for position coordinates
+    if (viewer && viewer.scene && viewer.scene.canvas) {
+      const screenHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+      // Safe LEFT_CLICK handling for picking coordinates on globe
+      screenHandler.setInputAction((click) => {
+        if (!click || !isValidPosition(click.position)) return;
+        try {
+          const ray = viewer.camera.getPickRay(click.position);
+          if (!ray) return;
+          const cartesian = viewer.scene.globe.pick(ray, viewer.scene);
+          if (!cartesian) return;
+
+          const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+          if (!cartographic) return;
+
+          const lat = Cesium.Math.toDegrees(cartographic.latitude);
+          const lon = Cesium.Math.toDegrees(cartographic.longitude);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            fetchWeatherData({ lat, lon });
+          }
+        } catch (pickErr) {
+          console.warn("Safe pick handler caught click coordinate error:", pickErr);
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+      // Safe MOUSE_MOVE handling
+      screenHandler.setInputAction((movement) => {
+        if (!isValidMovement(movement)) return;
+      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+      // Safe LEFT_DOWN handling
+      screenHandler.setInputAction((movement) => {
+        if (!movement || !isValidPosition(movement.position)) return;
+      }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+      // Safe PINCH_START handling
+      screenHandler.setInputAction((movement) => {
+        if (!movement || !isValidPosition(movement.position1) || !isValidPosition(movement.position2)) return;
+      }, Cesium.ScreenSpaceEventType.PINCH_START);
+
+      // Safe PINCH_MOVE handling
+      screenHandler.setInputAction((movement) => {
+        if (!movement || !movement.distance || !isValidPosition(movement.distance.startPosition) || !isValidPosition(movement.distance.endPosition)) return;
+      }, Cesium.ScreenSpaceEventType.PINCH_MOVE);
+    }
+
     if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
       const scc = viewer.scene.screenSpaceCameraController;
       scc.enableRotate = true;

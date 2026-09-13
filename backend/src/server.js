@@ -39,11 +39,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'An unexpected server error occurred.' });
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`🚀 Rainfy Weather Server is running!`);
-  console.log(`🌐 Application URL: http://localhost:${PORT}`);
-  console.log(`📊 API Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`=======================================================`);
-});
+// Start Server when run directly (local development)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 Rainfy Weather Server is running!`);
+    console.log(`🌐 Application URL: http://localhost:${PORT}`);
+    console.log(`📊 API Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`=======================================================`);
+  });
+}
+
+// Export app for Vercel serverless deployment
+module.exports = app;

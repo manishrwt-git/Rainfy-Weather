@@ -259,6 +259,16 @@ async function initCesiumViewer() {
       }
     });
 
+    // Disable default two-finger tilt/inertia that frequently crashes on mobile WebGL
+    viewer.scene.screenSpaceCameraController.enableTilt = true;
+    viewer.scene.screenSpaceCameraController.inertiaZoom = 0;
+    viewer.scene.screenSpaceCameraController.inertiaSpin = 0;
+    viewer.scene.screenSpaceCameraController.inertiaTranslate = 0;
+
+    // Set safe minimum and maximum zoom distances to prevent camera clipping
+    viewer.scene.screenSpaceCameraController.minimumZoomDistance = 500;
+    viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000;
+
     // Mobile resolution & FPS adjustments to prevent high-DPI projection errors and GPU memory overload
     viewer.useBrowserRecommendedResolution = false;
     if (window.devicePixelRatio && window.devicePixelRatio > 1) {
@@ -349,11 +359,11 @@ async function initCesiumViewer() {
       scc.enableZoom = true;
       scc.enableTilt = true;
       scc.enableLook = true;
-      scc.minimumZoomDistance = 50;
-      scc.maximumZoomDistance = 35000000;
-      scc.inertiaSpin = 0.92;
-      scc.inertiaTranslate = 0.92;
-      scc.inertiaZoom = 0.85;
+      scc.minimumZoomDistance = 500;
+      scc.maximumZoomDistance = 30000000;
+      scc.inertiaSpin = 0;
+      scc.inertiaTranslate = 0;
+      scc.inertiaZoom = 0;
       scc.bounceAnimationTime = 1.0;
 
       scc.rotateEventTypes = [

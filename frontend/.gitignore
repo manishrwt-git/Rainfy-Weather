@@ -1,0 +1,5 @@
+# Frontend ignores
+dist/
+build/
+.DS_Store
+Thumbs.db

@@ -259,15 +259,61 @@ async function initCesiumViewer() {
       }
     });
 
-    // Disable default two-finger tilt/inertia that frequently crashes on mobile WebGL
-    viewer.scene.screenSpaceCameraController.enableTilt = true;
-    viewer.scene.screenSpaceCameraController.inertiaZoom = 0;
-    viewer.scene.screenSpaceCameraController.inertiaSpin = 0;
-    viewer.scene.screenSpaceCameraController.inertiaTranslate = 0;
+    // Monkey-patch pickPositionWorldCoordinates & pickPosition to prevent undefined position crashes on mobile WebGL
+    if (viewer && viewer.scene) {
+      const origPickPositionWorldCoordinates = viewer.scene.pickPositionWorldCoordinates;
+      if (typeof origPickPositionWorldCoordinates === 'function') {
+        viewer.scene.pickPositionWorldCoordinates = function (position, result) {
+          if (!position || typeof position.x !== 'number' || typeof position.y !== 'number' || isNaN(position.x) || isNaN(position.y)) {
+            return undefined;
+          }
+          try {
+            return origPickPositionWorldCoordinates.call(viewer.scene, position, result);
+          } catch (err) {
+            console.warn("Suppressed pickPositionWorldCoordinates error:", err);
+            return undefined;
+          }
+        };
+      }
 
-    // Set safe minimum and maximum zoom distances to prevent camera clipping
-    viewer.scene.screenSpaceCameraController.minimumZoomDistance = 500;
-    viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000;
+      const origPickPosition = viewer.scene.pickPosition;
+      if (typeof origPickPosition === 'function') {
+        viewer.scene.pickPosition = function (windowPosition, result) {
+          if (!windowPosition || typeof windowPosition.x !== 'number' || typeof windowPosition.y !== 'number' || isNaN(windowPosition.x) || isNaN(windowPosition.y)) {
+            return undefined;
+          }
+          try {
+            return origPickPosition.call(viewer.scene, windowPosition, result);
+          } catch (err) {
+            console.warn("Suppressed pickPosition error:", err);
+            return undefined;
+          }
+        };
+      }
+
+      // Intercept WebGL render errors to smoothly switch to Three.js fallback if WebGL fails
+      if (viewer.scene.renderError) {
+        viewer.scene.renderError.addEventListener((scene, error) => {
+          console.warn("Cesium render error intercepted, gracefully switching to Three.js fallback:", error);
+          try {
+            if (viewer && !viewer.isDestroyed()) viewer.destroy();
+          } catch (e) { }
+          viewer = null;
+          initThreeJsFallback();
+        });
+      }
+    }
+
+    // Disable default two-finger tilt/inertia that frequently crashes on mobile WebGL
+    if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
+      viewer.scene.screenSpaceCameraController.enableTilt = true;
+      viewer.scene.screenSpaceCameraController.enableCollisionDetection = false;
+      viewer.scene.screenSpaceCameraController.inertiaZoom = 0;
+      viewer.scene.screenSpaceCameraController.inertiaSpin = 0;
+      viewer.scene.screenSpaceCameraController.inertiaTranslate = 0;
+      viewer.scene.screenSpaceCameraController.minimumZoomDistance = 500;
+      viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000;
+    }
 
     // Mobile resolution & FPS adjustments to prevent high-DPI projection errors and GPU memory overload
     viewer.useBrowserRecommendedResolution = false;
@@ -305,7 +351,7 @@ async function initCesiumViewer() {
       }
     }
 
-    // Safe Touch & Mouse Event Handling with null-checks for position coordinates
+    // Safe Touch & Mouse Event Handling for picking weather location
     if (viewer && viewer.scene && viewer.scene.canvas) {
       const screenHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
@@ -330,26 +376,6 @@ async function initCesiumViewer() {
           console.warn("Safe pick handler caught click coordinate error:", pickErr);
         }
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
-      // Safe MOUSE_MOVE handling
-      screenHandler.setInputAction((movement) => {
-        if (!isValidMovement(movement)) return;
-      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-      // Safe LEFT_DOWN handling
-      screenHandler.setInputAction((movement) => {
-        if (!movement || !isValidPosition(movement.position)) return;
-      }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
-
-      // Safe PINCH_START handling
-      screenHandler.setInputAction((movement) => {
-        if (!movement || !isValidPosition(movement.position1) || !isValidPosition(movement.position2)) return;
-      }, Cesium.ScreenSpaceEventType.PINCH_START);
-
-      // Safe PINCH_MOVE handling
-      screenHandler.setInputAction((movement) => {
-        if (!movement || !movement.distance || !isValidPosition(movement.distance.startPosition) || !isValidPosition(movement.distance.endPosition)) return;
-      }, Cesium.ScreenSpaceEventType.PINCH_MOVE);
     }
 
     if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
@@ -359,6 +385,7 @@ async function initCesiumViewer() {
       scc.enableZoom = true;
       scc.enableTilt = true;
       scc.enableLook = true;
+      scc.enableCollisionDetection = false;
       scc.minimumZoomDistance = 500;
       scc.maximumZoomDistance = 30000000;
       scc.inertiaSpin = 0;
